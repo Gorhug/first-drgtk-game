@@ -3,10 +3,12 @@ def tick args
                              y: 200,
                              w: 100,
                              h: 80,
-                             path: 'sprites/misc/dragon-0.png',
-                            speed: 25, }
+                            #  path: 'sprites/misc/dragon-0.png',
+                            speed: 24, }
   args.state.fireballs ||= []
   speed = args.state.player_rect.speed
+  player_sprite_index = 0.frame_index count: 6, hold_for: 8, repeat: true
+  args.state.player_rect.path = "sprites/misc/dragon-#{player_sprite_index}.png"
   dead_zone = 0.10
   # args.outputs.labels  << { x: 640,
   #                           y: 600,
