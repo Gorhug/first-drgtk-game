@@ -20,25 +20,19 @@ def tick args
   x_movement = 0
   y_movement = 0
   if args.inputs.controller_one.left_analog_active? threshold_perc: dead_zone
-    # args.state.player_rect.x += args.inputs.controller_one.left_analog_x_perc * speed
-    # args.state.player_rect.y += args.inputs.controller_one.left_analog_y_perc * speed
     x_movement = args.inputs.controller_one.left_analog_x_perc * speed
     y_movement = args.inputs.controller_one.left_analog_y_perc * speed
   else
 
     if args.inputs.left
-      # args.state.player_rect.x -= speed
       x_movement = -speed
     elsif args.inputs.right
-      # args.state.player_rect.x += speed
       x_movement = speed
     end
 
     if args.inputs.down
-      # args.state.player_rect.y -= speed
       y_movement = -speed
     elsif args.inputs.up
-      # args.state.player_rect.y += speed
       y_movement = speed
     end
   end
@@ -67,21 +61,9 @@ def tick args
   ## bound to screen
   player_w = args.state.player_rect.w
   player_h = args.state.player_rect.h
-  if args.state.player_rect.x +  player_w > args.grid.w
-    args.state.player_rect.x = args.grid.w - player_w
-  end
 
-  if args.state.player_rect.x < 0
-    args.state.player_rect.x = 0
-  end
-
-  if args.state.player_rect.y + player_h > args.grid.h
-    args.state.player_rect.y = args.grid.h - player_h
-  end
-
-  if args.state.player_rect.y < 0
-    args.state.player_rect.y = 0
-  end
+  args.state.player_rect.x = args.state.player_rect.x.clamp 0, args.grid.w - player_w
+  args.state.player_rect.y = args.state.player_rect.y.clamp 0, args.grid.h - player_h
 
   if args.inputs.keyboard.key_down.z ||
       args.inputs.keyboard.key_down.j ||
