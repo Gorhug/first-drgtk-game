@@ -17,23 +17,39 @@ def tick args
   #                           anchor_x: 0.5,
   #                           anchor_y: 0.5 }
 
-
+  x_movement = 0
+  y_movement = 0
   if args.inputs.controller_one.left_analog_active? threshold_perc: dead_zone
-    args.state.player_rect.x += args.inputs.controller_one.left_analog_x_perc * speed
-    args.state.player_rect.y += args.inputs.controller_one.left_analog_y_perc * speed
+    # args.state.player_rect.x += args.inputs.controller_one.left_analog_x_perc * speed
+    # args.state.player_rect.y += args.inputs.controller_one.left_analog_y_perc * speed
+    x_movement = args.inputs.controller_one.left_analog_x_perc * speed
+    y_movement = args.inputs.controller_one.left_analog_y_perc * speed
   else
+
     if args.inputs.left
-      args.state.player_rect.x -= speed
+      # args.state.player_rect.x -= speed
+      x_movement = -speed
     elsif args.inputs.right
-      args.state.player_rect.x += speed
+      # args.state.player_rect.x += speed
+      x_movement = speed
     end
 
     if args.inputs.down
-      args.state.player_rect.y -= speed
+      # args.state.player_rect.y -= speed
+      y_movement = -speed
     elsif args.inputs.up
-      args.state.player_rect.y += speed
+      # args.state.player_rect.y += speed
+      y_movement = speed
     end
   end
+
+  total_movement = x_movement.abs + y_movement.abs
+  if total_movement > speed
+    x_movement = x_movement / (total_movement / speed)
+    y_movement = y_movement / (total_movement / speed)
+  end
+  args.state.player_rect.x += x_movement
+  args.state.player_rect.y += y_movement
 
   ## wraparound
   # if args.state.player_rect.x > 1280
