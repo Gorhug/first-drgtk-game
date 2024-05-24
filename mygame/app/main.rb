@@ -1,90 +1,128 @@
+class Dragon
+  attr_accessor :x, :y, :w, :h, :speed
+  def initialize grid
+    @grid = grid
+    # @inputs = inputs
+    @x = 576
+    @y = 200
+    @w    = 100
+    @h    = 80
+    @speed    = 24
+    @path = ''
+  end
+
+  def dead
+    false
+  end
+
+  def move inputs
+    player_sprite_index = 0.frame_index count: 6, hold_for: 8, repeat: true
+    @path = "sprites/misc/dragon-#{player_sprite_index}.png"
+    dead_zone = 0.10
+    x_movement = 0
+    y_movement = 0
+    if inputs.controller_one.left_analog_active? threshold_perc: dead_zone
+      x_movement = inputs.controller_one.left_analog_x_perc * @speed
+      y_movement = inputs.controller_one.left_analog_y_perc * @speed
+    else
+
+      if inputs.left
+        x_movement = -@speed
+      elsif inputs.right
+        x_movement = @speed
+      end
+
+      if inputs.down
+        y_movement = -@speed
+      elsif inputs.up
+        y_movement = @speed
+      end
+    end
+
+    total_movement = x_movement.abs + y_movement.abs
+    if total_movement > @speed
+      x_movement = x_movement / (total_movement / @speed)
+      y_movement = y_movement / (total_movement / @speed)
+    end
+    @x += x_movement
+    @y += y_movement
+    @x = @x.clamp 0, @grid.w - @w
+    @y = @y.clamp 0, @grid.h - @h
+  end
+
+  # if the object that is in args.outputs.sprites (or static_sprites)
+  # respond_to? :draw_override, then the method is invoked giving you
+  # access to the class used to draw to the canvas.
+  def draw_override ffi_draw
+    # first move then draw
+
+    # move
+    # return
+    # The argument order for ffi.draw_sprite is:
+    # x, y, w, h, path
+    ffi_draw.draw_sprite @x, @y, @w, @h, @path
+  end
+end
+
+class Fireball
+  attr_accessor :x, :y, :w, :h, :speed, :dead
+  def initialize x, y, speed, grid
+    @grid = grid
+    @x = x
+    @y = y
+    @w    = 32
+    @h    = 32
+    @speed    = speed
+    @path = 'sprites/misc/fireball.png'
+    @dead = false
+  end
+
+  def move
+    @x += @speed
+    if @x > @grid.w
+      @dead = true
+    end
+  end
+
+  # if the object that is in args.outputs.sprites (or static_sprites)
+  # respond_to? :draw_override, then the method is invoked giving you
+  # access to the class used to draw to the canvas.
+  def draw_override ffi_draw
+    # first move then draw
+
+    move
+    # return
+    # The argument order for ffi.draw_sprite is:
+    # x, y, w, h, path
+    ffi_draw.draw_sprite @x, @y, @w, @h, @path if !@dead
+  end
+end
+
+
 def tick args
-  args.state.player_rect ||= { x: 576,
-                             y: 200,
-                             w: 100,
-                             h: 80,
-                            #  path: 'sprites/misc/dragon-0.png',
-                            speed: 24, }
+
+  args.state.player ||= Dragon.new args.grid
+  if args.state.tick_count == 0
+    args.outputs.static_sprites << args.state.player
+  end
   args.state.fireballs ||= []
-  speed = args.state.player_rect.speed
-  player_sprite_index = 0.frame_index count: 6, hold_for: 8, repeat: true
-  args.state.player_rect.path = "sprites/misc/dragon-#{player_sprite_index}.png"
-  dead_zone = 0.10
-  # args.outputs.labels  << { x: 640,
-  #                           y: 600,
-  #                           text: 'Hello World!',
-  #                           size_px: 30,
-  #                           anchor_x: 0.5,
-  #                           anchor_y: 0.5 }
 
-  x_movement = 0
-  y_movement = 0
-  if args.inputs.controller_one.left_analog_active? threshold_perc: dead_zone
-    x_movement = args.inputs.controller_one.left_analog_x_perc * speed
-    y_movement = args.inputs.controller_one.left_analog_y_perc * speed
-  else
-
-    if args.inputs.left
-      x_movement = -speed
-    elsif args.inputs.right
-      x_movement = speed
-    end
-
-    if args.inputs.down
-      y_movement = -speed
-    elsif args.inputs.up
-      y_movement = speed
-    end
-  end
-
-  total_movement = x_movement.abs + y_movement.abs
-  if total_movement > speed
-    x_movement = x_movement / (total_movement / speed)
-    y_movement = y_movement / (total_movement / speed)
-  end
-  args.state.player_rect.x += x_movement
-  args.state.player_rect.y += y_movement
-
-  ## wraparound
-  # if args.state.player_rect.x > 1280
-  #   args.state.player_rect.x = 0
-  # elsif args.state.player_rect.x < 0
-  #   args.state.player_rect.x = 1280
-  # end
-
-  # if args.state.player_rect.y > 720
-  #   args.state.player_rect.y = 0
-  # elsif args.state.player_rect.y < 0
-  #   args.state.player_rect.y = 720
-  # end
-
-  ## bound to screen
-  player_w = args.state.player_rect.w
-  player_h = args.state.player_rect.h
-
-  args.state.player_rect.x = args.state.player_rect.x.clamp 0, args.grid.w - player_w
-  args.state.player_rect.y = args.state.player_rect.y.clamp 0, args.grid.h - player_h
-
+  args.state.player.move args.inputs
   if args.inputs.keyboard.key_down.z ||
       args.inputs.keyboard.key_down.j ||
       args.inputs.controller_one.key_down.a
-    args.state.fireballs << {
-      x: args.state.player_rect.x,
-      y: args.state.player_rect.y,
-      text: 'fireball'
-    }
+    new_ball = Fireball.new args.state.player.x + args.state.player.w - 12,
+                                        args.state.player.y + 10,
+                                        args.state.player.speed + 2,
+                                        args.grid
+    args.state.fireballs << new_ball
+    args.outputs.static_sprites << new_ball
   end
 
-  args.state.fireballs.each do |fireball|
-    fireball.x += speed + 2
-    if fireball.x > args.grid.w
-      fireball.dead = true
-      next
-    end
-  end
   args.state.fireballs.reject! { |fireball| fireball.dead }
-  #args.gtk.notify! "Fireballs: #{args.state.fireballs.length}"
-  args.outputs.labels << args.state.fireballs
+  args.outputs.static_sprites.reject! { |fireball| fireball.dead}
+  # args.gtk.notify! "Fireballs: #{args.state.fireballs.length}"
+  # args.outputs.sprites << args.state.fireballs
 
-  args.outputs.sprites << args.state.player_rect
+  # args.outputs.sprites << args.state.fireballs
 end
