@@ -98,12 +98,35 @@ class Fireball
   end
 end
 
+class Solid
+  attr_accessor :x, :y, :w, :h, :r, :g, :b, :a, :anchor_x, :anchor_y, :blendmode_enum
+
+  def primitive_marker
+    :solid # or :border
+  end
+end
+
+# Inherit from type
+class BlueSky < Solid
+  # constructor
+  def initialize grid
+    @x = 0
+    @y = 0
+    @w = grid.w
+    @h = grid.h
+    @r = 92
+    @g = 120
+    @b = 230
+  end
+end
 
 def tick args
 
   args.state.player ||= Dragon.new args.grid
+  args.state.blue_sky ||= BlueSky.new args.grid
   if args.state.tick_count == 0
-    args.outputs.static_sprites << args.state.player
+    # args.outputs.static_sprites << args.state.player
+    args.outputs.static_solids << args.state.blue_sky
   end
   args.state.fireballs ||= []
 
@@ -116,13 +139,12 @@ def tick args
                                         args.state.player.speed + 2,
                                         args.grid
     args.state.fireballs << new_ball
-    args.outputs.static_sprites << new_ball
+    # args.outputs.static_sprites << new_ball
   end
 
   args.state.fireballs.reject! { |fireball| fireball.dead }
-  args.outputs.static_sprites.reject! { |fireball| fireball.dead}
+  # args.outputs.static_sprites.reject! { |fireball| fireball.dead}
   # args.gtk.notify! "Fireballs: #{args.state.fireballs.length}"
-  # args.outputs.sprites << args.state.fireballs
-
-  # args.outputs.sprites << args.state.fireballs
+  # args.outputs.solids << args.state.blue_sky
+  args.outputs.sprites << [args.state.fireballs, args.state.player ]
 end
