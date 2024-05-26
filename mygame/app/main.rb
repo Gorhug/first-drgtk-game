@@ -120,16 +120,43 @@ class BlueSky < Solid
   end
 end
 
+class Cloud < Solid
+  def initialize grid, size_m, speed_m
+    @grid = grid
+    @x = rand grid.w
+    @y = rand grid.h
+    @w = 48 * size_m
+    @h = 32 * size_m
+    @r = 256
+    @g = 256
+    @b = 256
+    @a = 256 * size_m
+    @speed = 2 * speed_m
+  end
+  def move
+    @x -= @speed
+    if @x < -@w
+      @x = @grid.w
+      @y = rand @grid.h
+    end
+  end
+end
 def tick args
 
   args.state.player ||= Dragon.new args.grid
   args.state.blue_sky ||= BlueSky.new args.grid
-  if args.state.tick_count == 0
-    # args.outputs.static_sprites << args.state.player
-    args.outputs.static_solids << args.state.blue_sky
-  end
   args.state.fireballs ||= []
-
+  args.state.cloud_count = 10
+  args.state.cloud_layers = 4
+  # args.state.clouds ||= []
+  args.state.clouds ||= args.state.cloud_layers.map { |j| args.state.cloud_count.map { |i| Cloud.new args.grid, 1/(j+1), 1/(j+1)} }
+  if args.state.tick_count == 0
+    args.state.clouds.reverse!
+    args.outputs.static_solids << [args.state.blue_sky, args.state.clouds]
+    args.outputs.static_sprites << args.state.player
+  end
+  # args.outputs.solids << [args.state.blue_sky, args.state.clouds]
+  args.state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
   args.state.player.move args.inputs
   if args.inputs.keyboard.key_down.z ||
       args.inputs.keyboard.key_down.j ||
@@ -145,6 +172,5 @@ def tick args
   args.state.fireballs.reject! { |fireball| fireball.dead }
   # args.outputs.static_sprites.reject! { |fireball| fireball.dead}
   # args.gtk.notify! "Fireballs: #{args.state.fireballs.length}"
-  # args.outputs.solids << args.state.blue_sky
-  args.outputs.sprites << [args.state.fireballs, args.state.player ]
+  args.outputs.sprites << args.state.fireballs
 end
