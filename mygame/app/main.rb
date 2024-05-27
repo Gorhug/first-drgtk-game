@@ -7,7 +7,7 @@ class Dragon
     @y = 200
     @w    = 100
     @h    = 80
-    @speed    = 24
+    @speed    = 12
     @path = ''
   end
 
@@ -90,7 +90,35 @@ class Fireball
   def draw_override ffi_draw
     # first move then draw
 
-    move
+    # move
+    # return
+    # The argument order for ffi.draw_sprite is:
+    # x, y, w, h, path
+    ffi_draw.draw_sprite @x, @y, @w, @h, @path if !@dead
+  end
+end
+
+class Target
+  attr_accessor :x, :y, :w, :h, :speed, :dead
+  def initialize grid
+    size = 64
+    @grid = grid
+    @x = rand(@grid.w * 0.4) + @grid.w * 0.6 - size
+    @y = rand(@grid.h - size * 2) + size
+    @w    = size
+    @h    = size
+    # @speed    = speed
+    @path = 'sprites/misc/target.png'
+    @dead = false
+  end
+
+  # if the object that is in args.outputs.sprites (or static_sprites)
+  # respond_to? :draw_override, then the method is invoked giving you
+  # access to the class used to draw to the canvas.
+  def draw_override ffi_draw
+    # first move then draw
+
+    # move
     # return
     # The argument order for ffi.draw_sprite is:
     # x, y, w, h, path
@@ -146,8 +174,11 @@ def tick args
   args.state.player ||= Dragon.new args.grid
   args.state.blue_sky ||= BlueSky.new args.grid
   args.state.fireballs ||= []
-  args.state.cloud_count = 10
-  args.state.cloud_layers = 4
+  args.state.target_count ||= 3
+  args.state.targets ||= args.state.target_count.map { |i| Target.new args.grid}
+
+  args.state.cloud_count ||= 10
+  args.state.cloud_layers ||= 4
   # args.state.clouds ||= []
   args.state.clouds ||= args.state.cloud_layers.map { |j| args.state.cloud_count.map { |i| Cloud.new args.grid, 1/(j+1), 1/(j+1)} }
   if args.state.tick_count == 0
@@ -155,6 +186,7 @@ def tick args
     args.outputs.static_solids << [args.state.blue_sky, args.state.clouds]
     args.outputs.static_sprites << args.state.player
   end
+
   # args.outputs.solids << [args.state.blue_sky, args.state.clouds]
   args.state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
   args.state.player.move args.inputs
@@ -168,9 +200,21 @@ def tick args
     args.state.fireballs << new_ball
     # args.outputs.static_sprites << new_ball
   end
+  args.state.fireballs.each do |fireball|
+    fireball.move
 
+    args.state.targets.each do |target|
+      if args.geometry.intersect_rect?(target, fireball)
+        target.dead = true
+        fireball.dead = true
+        t = Target.new args.grid
+        args.state.targets << t
+      end
+    end
+  end
   args.state.fireballs.reject! { |fireball| fireball.dead }
+  args.state.targets.reject! { |target| target.dead }
   # args.outputs.static_sprites.reject! { |fireball| fireball.dead}
   # args.gtk.notify! "Fireballs: #{args.state.fireballs.length}"
-  args.outputs.sprites << args.state.fireballs
+  args.outputs.sprites << [args.state.targets, args.state.fireballs]
 end
