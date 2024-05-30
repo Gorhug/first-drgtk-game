@@ -175,8 +175,8 @@ def tick args
   args.state.blue_sky ||= BlueSky.new args.grid
   args.state.fireballs ||= []
   args.state.target_count ||= 3
-  args.state.targets ||= args.state.target_count.map { |i| Target.new args.grid}
-
+  # args.state.targets ||= args.state.target_count.map { |i| Target.new args.grid}
+  args.state.targets ||= []
   args.state.cloud_count ||= 10
   args.state.cloud_layers ||= 4
   # args.state.clouds ||= []
@@ -204,17 +204,31 @@ def tick args
     fireball.move
 
     args.state.targets.each do |target|
-      if args.geometry.intersect_rect?(target, fireball)
+      if args.geometry.intersect_rect? target, fireball
         target.dead = true
         fireball.dead = true
-        t = Target.new args.grid
-        args.state.targets << t
+
       end
     end
   end
   args.state.fireballs.reject! { |fireball| fireball.dead }
   args.state.targets.reject! { |target| target.dead }
+
+  while args.state.targets.length < args.state.target_count do
+    t = nil
+    until t do
+      t = Target.new args.grid
+      args.state.targets.each do |existing|
+        conflict = args.geometry.intersect_rect? existing, t
+        if conflict
+          t = nil
+          break
+        end
+      end
+    end
+    args.state.targets << t
+  end
   # args.outputs.static_sprites.reject! { |fireball| fireball.dead}
-  # args.gtk.notify! "Fireballs: #{args.state.fireballs.length}"
-  args.outputs.sprites << [args.state.targets, args.state.fireballs]
+  # args.outputs.debug << "Fireballs: #{args.state.fireballs.length}"
+  args.outputs.sprites << [args.state.fireballs, args.state.targets ]
 end
