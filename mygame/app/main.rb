@@ -66,15 +66,16 @@ end
 
 class Fireball
   attr_accessor :x, :y, :w, :h, :speed, :dead
-  def initialize x, y, speed, grid
+  def initialize x, y, speed, grid, started
     @grid = grid
     @x = x
     @y = y
-    @w    = 32
-    @h    = 32
+    @w    = 48
+    @h    = 48
     @speed    = speed
     @path = 'sprites/misc/fireball.png'
     @dead = false
+    @anim_start = started -1
   end
 
   def move
@@ -88,13 +89,14 @@ class Fireball
   # respond_to? :draw_override, then the method is invoked giving you
   # access to the class used to draw to the canvas.
   def draw_override ffi_draw
+    rot_mul = @anim_start.frame_index count: 40, hold_for: 1, repeat: true
     # first move then draw
 
     # move
     # return
     # The argument order for ffi.draw_sprite is:
     # x, y, w, h, path
-    ffi_draw.draw_sprite @x, @y, @w, @h, @path if !@dead
+    ffi_draw.draw_sprite_2 @x, @y, @w, @h, @path, rot_mul * -9, 200
   end
 end
 
@@ -108,7 +110,7 @@ class Target
     @w    = size
     @h    = size
     # @speed    = speed
-    @path = 'sprites/misc/target.png'
+    @path = 'sprites/misc/target_red3.png'
     @dead = false
   end
 
@@ -148,29 +150,44 @@ class BlueSky < Solid
   end
 end
 
-class Cloud < Solid
+class Cloud
+  attr_accessor :x, :y, :w, :h, :speed, :r, :g, :b, :a
   def initialize grid, size_m, speed_m
     @grid = grid
     @x = rand grid.w
     @y = rand grid.h
-    @w = 48 * size_m
-    @h = 32 * size_m
+    @w = 190 * size_m
+    @h = 127 * size_m
     @r = 256
     @g = 256
     @b = 256
     @a = 256 * size_m
     @speed = 2 * speed_m
+    @path = "sprites/misc/cloud#{(rand 9) + 1}.png"
+    # @anim_start = - @x
   end
   def move
+    # sprite_index = @anim_start.frame_index count: 9, hold_for: 30, repeat: true
+    # sprite_index += 1
+    # @path = "sprites/misc/cloud#{sprite_index}.png"
     @x -= @speed
     if @x < -@w
       @x = @grid.w
       @y = rand @grid.h
     end
   end
+  def draw_override ffi_draw
+    # first move then draw
+
+    move
+    # return
+    # The argument order for ffi.draw_sprite is:
+    # x, y, w, h, path
+    ffi_draw.draw_sprite_2 @x, @y, @w, @h, @path, nil, @a
+  end
 end
 def tick args
-
+  args.state.score ||= 0
   args.state.player ||= Dragon.new args.grid
   args.state.blue_sky ||= BlueSky.new args.grid
   args.state.fireballs ||= []
@@ -183,12 +200,12 @@ def tick args
   args.state.clouds ||= args.state.cloud_layers.map { |j| args.state.cloud_count.map { |i| Cloud.new args.grid, 1/(j+1), 1/(j+1)} }
   if args.state.tick_count == 0
     args.state.clouds.reverse!
-    args.outputs.static_solids << [args.state.blue_sky, args.state.clouds]
+    args.outputs.static_solids << args.state.blue_sky
     args.outputs.static_sprites << args.state.player
   end
 
   # args.outputs.solids << [args.state.blue_sky, args.state.clouds]
-  args.state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
+  # args.state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
   args.state.player.move args.inputs
   if args.inputs.keyboard.key_down.z ||
       args.inputs.keyboard.key_down.j ||
@@ -196,7 +213,7 @@ def tick args
     new_ball = Fireball.new args.state.player.x + args.state.player.w - 12,
                                         args.state.player.y + 10,
                                         args.state.player.speed + 2,
-                                        args.grid
+                                        args.grid, args.state.tick_count
     args.state.fireballs << new_ball
     # args.outputs.static_sprites << new_ball
   end
@@ -207,7 +224,7 @@ def tick args
       if args.geometry.intersect_rect? target, fireball
         target.dead = true
         fireball.dead = true
-
+        args.state.score += 1
       end
     end
   end
@@ -229,6 +246,19 @@ def tick args
     args.state.targets << t
   end
   # args.outputs.static_sprites.reject! { |fireball| fireball.dead}
+  # player_sprite_index = 1.frame_index count: 9, hold_for: 30, repeat: true
   # args.outputs.debug << "Fireballs: #{args.state.fireballs.length}"
-  args.outputs.sprites << [args.state.fireballs, args.state.targets ]
+  # args.outputs.debug << "Frame index: #{player_sprite_index}"
+  # args.outputs.debug << "Clouds: #{args.state.clouds[0][0]}"
+  # puts "Fireballs: #{args.state.fireballs.length}"
+  args.outputs.sprites << [args.state.clouds, args.state.fireballs, args.state.targets ]
+  args.outputs.labels << {
+    x: 40,
+    y: args.grid.h - 40,
+    text: "Score: #{args.state.score}",
+    size_enum: 4,
+    font: "fonts/PressStart2P-Regular.ttf",
+  }
+  # args.outputs.debug << "Tick: #{args.state.tick_count}"
+  # args.outputs.debug << args.gtk.framerate_diagnostics_primitives
 end
