@@ -259,7 +259,7 @@ class Game
       font: "fonts/PressStart2P-Regular.ttf"
     }
     outputs.labels << labels
-    outputs.sprites << state.clouds
+    # outputs.sprites << state.clouds
     if state.timer < -30 && fire_input?
       gtk.reset_next_tick
     end
@@ -267,7 +267,7 @@ class Game
 
   def gameplay_tick
     state.score ||= 0
-    state.player ||= Dragon.new args
+    # state.player ||= Dragon.new args
     state.blue_sky ||= BlueSky.new grid
     state.fireballs ||= []
     state.target_count ||= 3
@@ -276,10 +276,10 @@ class Game
     state.cloud_count ||= 10
     state.cloud_layers ||= 4
     # state.clouds ||= []
-    state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
+    # state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
     if state.tick_count == 0
-      state.clouds.reverse!
-      outputs.static_solids << state.blue_sky
+      # state.clouds.reverse!
+      # outputs.static_solids << state.blue_sky
       outputs.static_sprites << state.player
     end
 
@@ -337,7 +337,7 @@ class Game
     # outputs.debug << "Frame index: #{player_sprite_index}"
     # outputs.debug << "Clouds: #{state.clouds[0][0]}"
     # puts "Fireballs: #{state.fireballs.length}"
-    outputs.sprites << [state.clouds, state.fireballs, state.targets ]
+    outputs.primitives << [state.fireballs, state.targets ]
     outputs.labels << [{
       x: 40,
       y: grid.h - 40,
@@ -356,13 +356,96 @@ class Game
     # outputs.debug << "Tick: #{state.tick_count}"
     # outputs.debug << gtk.framerate_diagnostics_primitives
   end
+
+  def title_tick
+    state.title_ending ||= false
+    if fire_input? && !state.title_ending
+      state.player.dead = false
+      audio[:music].paused = true
+      audio[:begin] = {input: "sounds/success.ogg"}
+      state.title_ending = true
+      # state.scene = "gameplay"
+      # return
+    end
+    state.player.dead = false
+    state.player.move
+    if state.title_ending
+      if audio.key? :begin
+        outputs.labels << {
+            x: 480,
+            y: grid.top - 280,
+            text: "PREPARE!",
+            size_enum: 6,
+            font: "fonts/PressStart2P-Regular.ttf",
+          }
+      else
+        audio[:music].paused = false
+        state.scene = "gameplay"
+      end
+      return
+    end
+
+    labels = []
+    labels << {
+      x: 400,
+      y: grid.top - 200,
+      text: "Gorhug presents",
+      font: "fonts/Jacquard12-Regular.ttf",
+      size_enum: 28,
+    }
+    labels << {
+      x: 380,
+      y: grid.top - 280,
+      text: "Target Practice",
+      size_enum: 6,
+      font: "fonts/PressStart2P-Regular.ttf",
+    }
+    labels << {
+      x: 460,
+      y: grid.top - 320,
+      text: "Hit the targets!",
+      font: "fonts/PressStart2P-Regular.ttf",
+    }
+
+    labels << {
+      x: 40,
+      y: 120,
+      text: "Arrows/WASD to move | Z/J to fire | gamepad supported",
+      font: "fonts/PressStart2P-Regular.ttf",
+    }
+    labels << {
+      x: 40,
+      y: 80,
+      text: "Fire to start",
+      size_enum: 2,
+      font: "fonts/PressStart2P-Regular.ttf",
+    }
+    outputs.labels << labels
+  end
+
 end
 
 def tick args
+  state = args.state
+  outputs = args.outputs
+  grid = args.grid
   if args.state.tick_count == 1
-    args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg", looping: true }
+    args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
+    looping: true,
+    # gain: 0.1
+  }
+  end
+  state.player ||= Dragon.new args
+  state.blue_sky ||= BlueSky.new grid
+  state.cloud_count ||= 10
+  state.cloud_layers ||= 4
+  state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
+  if state.tick_count == 0
+    state.clouds.reverse!
+    outputs.static_solids << state.blue_sky
+    outputs.static_sprites << [state.clouds, state.player]
   end
   args.state.game ||= Game.new args
-  args.state.scene ||= "gameplay"
+  args.state.scene ||= "title"
   args.state.game.send "#{args.state.scene}_tick"
 end
