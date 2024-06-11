@@ -1,7 +1,9 @@
 class Dragon
-  attr_accessor :x, :y, :w, :h, :speed
-  def initialize grid
-    @grid = grid
+  attr :x, :y, :w, :h, :speed, :dead
+  attr_gtk
+  def initialize args
+    @args = args
+    # @grid = grid
     # @inputs = inputs
     @x = 576
     @y = 200
@@ -9,13 +11,10 @@ class Dragon
     @h    = 80
     @speed    = 12
     @path = ''
+    @dead = false
   end
 
-  def dead
-    false
-  end
-
-  def move inputs
+  def move
     player_sprite_index = 0.frame_index count: 6, hold_for: 8, repeat: true
     @path = "sprites/misc/dragon-#{player_sprite_index}.png"
     dead_zone = 0.10
@@ -46,8 +45,8 @@ class Dragon
     end
     @x += x_movement
     @y += y_movement
-    @x = @x.clamp 0, @grid.w - @w
-    @y = @y.clamp 0, @grid.h - @h
+    @x = @x.clamp 0, grid.w - @w
+    @y = @y.clamp 0, grid.h - @h
   end
 
   # if the object that is in args.outputs.sprites (or static_sprites)
@@ -60,27 +59,28 @@ class Dragon
     # return
     # The argument order for ffi.draw_sprite is:
     # x, y, w, h, path
-    ffi_draw.draw_sprite @x, @y, @w, @h, @path
+    ffi_draw.draw_sprite @x, @y, @w, @h, @path unless @dead
   end
 end
 
 class Fireball
-  attr_accessor :x, :y, :w, :h, :speed, :dead
-  def initialize x, y, speed, grid, started
-    @grid = grid
-    @x = x
-    @y = y
+  attr :x, :y, :w, :h, :speed, :dead
+  attr_gtk
+  def initialize args
+    @args = args
+    @x = state.player.x + state.player.w - 12
+    @y = state.player.y + 10
     @w    = 48
     @h    = 48
-    @speed    = speed
+    @speed    = state.player.speed + 2
     @path = 'sprites/misc/fireball.png'
     @dead = false
-    @anim_start = started -1
+    @anim_start = state.tick_count - 1
   end
 
   def move
     @x += @speed
-    if @x > @grid.w
+    if @x > grid.w
       @dead = true
     end
   end
@@ -104,9 +104,9 @@ class Target
   attr_accessor :x, :y, :w, :h, :speed, :dead
   def initialize grid
     size = 64
-    @grid = grid
-    @x = rand(@grid.w * 0.4) + @grid.w * 0.6 - size
-    @y = rand(@grid.h - size * 2) + size
+    # @grid = grid
+    @x = rand(grid.w * 0.4) + grid.w * 0.6 - size
+    @y = rand(grid.h - size * 2) + size
     @w    = size
     @h    = size
     # @speed    = speed
@@ -124,12 +124,12 @@ class Target
     # return
     # The argument order for ffi.draw_sprite is:
     # x, y, w, h, path
-    ffi_draw.draw_sprite @x, @y, @w, @h, @path if !@dead
+    ffi_draw.draw_sprite @x, @y, @w, @h, @path
   end
 end
 
 class Solid
-  attr_accessor :x, :y, :w, :h, :r, :g, :b, :a, :anchor_x, :anchor_y, :blendmode_enum
+  attr :x, :y, :w, :h, :r, :g, :b, :a, :anchor_x, :anchor_y, :blendmode_enum
 
   def primitive_marker
     :solid # or :border
@@ -151,9 +151,11 @@ class BlueSky < Solid
 end
 
 class Cloud
-  attr_accessor :x, :y, :w, :h, :speed, :r, :g, :b, :a
-  def initialize grid, size_m, speed_m
-    @grid = grid
+  attr :x, :y, :w, :h, :speed, :r, :g, :b, :a
+  attr_gtk
+
+  def initialize args, size_m, speed_m
+    @args = args
     @x = rand grid.w
     @y = rand grid.h
     @w = 190 * size_m
@@ -172,8 +174,8 @@ class Cloud
     # @path = "sprites/misc/cloud#{sprite_index}.png"
     @x -= @speed
     if @x < -@w
-      @x = @grid.w
-      @y = rand @grid.h
+      @x = grid.w
+      @y = rand grid.h
     end
   end
   def draw_override ffi_draw
@@ -186,9 +188,87 @@ class Cloud
     ffi_draw.draw_sprite_2 @x, @y, @w, @h, @path, nil, @a
   end
 end
+
+HIGH_SCORE_FILE = "high-score.txt"
+class Game
+  attr_gtk
+
+  def initialize args
+    @args = args
+  end
+
+  def fire_input?
+    inputs.keyboard.key_down.z ||
+      inputs.keyboard.key_down.j ||
+      inputs.controller_one.key_down.a
+  end
+
+
+  def game_over_tick
+    state.high_score ||= (gtk.read_file HIGH_SCORE_FILE).to_i
+
+    state.timer -= 1
+
+    if !state.saved_high_score && state.score > state.high_score
+      gtk.write_file HIGH_SCORE_FILE, state.score.to_s
+      state.saved_high_score = true
+    end
+
+    labels = []
+    labels << {
+      x: 40,
+      y: grid.h - 40,
+      text: "Game Over!",
+      size_enum: 10,
+      font: "fonts/PressStart2P-Regular.ttf"
+    }
+    labels << {
+      x: 40,
+      y: grid.h - 90,
+      text: "Score: #{state.score}",
+      size_enum: 7,
+      font: "fonts/PressStart2P-Regular.ttf"
+    }
+
+    if state.score > state.high_score
+      labels << {
+        x: 40,
+        y: grid.h - 140,
+        text: "New high-score!",
+        size_enum: 4,
+        font: "fonts/PressStart2P-Regular.ttf"
+      }
+    else
+      labels << {
+        x: 40,
+        y: args.grid.h - 140,
+        text: "Score to beat: #{args.state.high_score}",
+        size_enum: 3,
+        font: "fonts/PressStart2P-Regular.ttf"
+      }
+    end
+
+    labels << {
+      x: 40,
+      y: 90,
+      text: "Fire to restart",
+      size_enum: 2,
+      font: "fonts/PressStart2P-Regular.ttf"
+    }
+    outputs.labels << labels
+
+    if state.timer < -30 && fire_input?
+      $gtk.reset
+    end
+  end
+end
+
 def tick args
+  # if args.state.tick_count == 1
+  #   args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg", looping: true }
+  # end
   args.state.score ||= 0
-  args.state.player ||= Dragon.new args.grid
+  args.state.player ||= Dragon.new args
   args.state.blue_sky ||= BlueSky.new args.grid
   args.state.fireballs ||= []
   args.state.target_count ||= 3
@@ -197,31 +277,30 @@ def tick args
   args.state.cloud_count ||= 10
   args.state.cloud_layers ||= 4
   # args.state.clouds ||= []
-  args.state.clouds ||= args.state.cloud_layers.map { |j| args.state.cloud_count.map { |i| Cloud.new args.grid, 1/(j+1), 1/(j+1)} }
+  args.state.clouds ||= args.state.cloud_layers.map { |j| args.state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
   if args.state.tick_count == 0
     args.state.clouds.reverse!
     args.outputs.static_solids << args.state.blue_sky
     args.outputs.static_sprites << args.state.player
   end
 
+  # args.state.player.dead = true
+  # args.state.timer ||= 0
+  # game_over_tick args
+  # return
   # args.outputs.solids << [args.state.blue_sky, args.state.clouds]
   # args.state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
-  args.state.player.move args.inputs
-  if args.inputs.keyboard.key_down.z ||
-      args.inputs.keyboard.key_down.j ||
-      args.inputs.controller_one.key_down.a
-    new_ball = Fireball.new args.state.player.x + args.state.player.w - 12,
-                                        args.state.player.y + 10,
-                                        args.state.player.speed + 2,
-                                        args.grid, args.state.tick_count
-    args.state.fireballs << new_ball
-    # args.outputs.static_sprites << new_ball
+  args.state.player.move
+  if fire_input? args.inputs
+    args.audio[:fireball] = {input: "sounds/creature1.ogg"}
+    args.state.fireballs << (Fireball.new args)
   end
   args.state.fireballs.each do |fireball|
     fireball.move
 
     args.state.targets.each do |target|
       if args.geometry.intersect_rect? target, fireball
+        args.audio[:hit] = {input: "sounds/explosion#{(rand 4)+1}.ogg"}
         target.dead = true
         fireball.dead = true
         args.state.score += 1
