@@ -190,6 +190,7 @@ class Cloud
 end
 
 HIGH_SCORE_FILE = "high-score.txt"
+FPS = 60
 class Game
   attr_gtk
 
@@ -208,7 +209,9 @@ class Game
     state.high_score ||= (gtk.read_file HIGH_SCORE_FILE).to_i
 
     state.timer -= 1
-
+    if !audio.key? :gameover
+      audio[:music].paused = false
+    end
     if !state.saved_high_score && state.score > state.high_score
       gtk.write_file HIGH_SCORE_FILE, state.score.to_s
       state.saved_high_score = true
@@ -256,88 +259,110 @@ class Game
       font: "fonts/PressStart2P-Regular.ttf"
     }
     outputs.labels << labels
-
+    outputs.sprites << state.clouds
     if state.timer < -30 && fire_input?
-      $gtk.reset
+      gtk.reset_next_tick
     end
+  end
+
+  def gameplay_tick
+    state.score ||= 0
+    state.player ||= Dragon.new args
+    state.blue_sky ||= BlueSky.new grid
+    state.fireballs ||= []
+    state.target_count ||= 3
+    # state.targets ||= state.target_count.map { |i| Target.new grid}
+    state.targets ||= []
+    state.cloud_count ||= 10
+    state.cloud_layers ||= 4
+    # state.clouds ||= []
+    state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
+    if state.tick_count == 0
+      state.clouds.reverse!
+      outputs.static_solids << state.blue_sky
+      outputs.static_sprites << state.player
+    end
+
+
+    state.timer ||= 20 * FPS
+    state.timer -= 1
+    if state.timer <= 0
+      audio[:music].paused = true
+      # audio[:music].gain = 0.25
+      audio[:gameover] = {input: "sounds/failure.ogg"}
+      state.scene = "game_over"
+      state.player.dead = true
+      return
+    end
+    # outputs.solids << [state.blue_sky, state.clouds]
+    # state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
+    state.player.move
+    if state.game.fire_input?
+      audio[:fireball] = {input: "sounds/creature1.ogg"}
+      state.fireballs << (Fireball.new args)
+      # audio[:gameover] = {input: "sounds/Failure.wav"}
+    end
+    state.fireballs.each do |fireball|
+      fireball.move
+
+      state.targets.each do |target|
+        if geometry.intersect_rect? target, fireball
+          audio[:hit] = {input: "sounds/explosion#{(rand 4)+1}.ogg"}
+          target.dead = true
+          fireball.dead = true
+          state.score += 1
+        end
+      end
+    end
+    state.fireballs.reject! { |fireball| fireball.dead }
+    state.targets.reject! { |target| target.dead }
+
+    while state.targets.length < state.target_count do
+      t = nil
+      until t do
+        t = Target.new grid
+        state.targets.each do |existing|
+          conflict = geometry.intersect_rect? existing, t
+          if conflict
+            t = nil
+            break
+          end
+        end
+      end
+      state.targets << t
+    end
+    # outputs.static_sprites.reject! { |fireball| fireball.dead}
+    # player_sprite_index = 1.frame_index count: 9, hold_for: 30, repeat: true
+    # outputs.debug << "Fireballs: #{state.fireballs.length}"
+    # outputs.debug << "Frame index: #{player_sprite_index}"
+    # outputs.debug << "Clouds: #{state.clouds[0][0]}"
+    # puts "Fireballs: #{state.fireballs.length}"
+    outputs.sprites << [state.clouds, state.fireballs, state.targets ]
+    outputs.labels << [{
+      x: 40,
+      y: grid.h - 40,
+      text: "Score: #{state.score}",
+      size_enum: 4,
+      font: "fonts/PressStart2P-Regular.ttf",
+    },{
+      x: args.grid.w - 40,
+      y: args.grid.h - 40,
+      text: "Time Left: #{(state.timer / FPS).round}",
+      size_enum: 2,
+      alignment_enum: 2,
+      font: "fonts/PressStart2P-Regular.ttf",
+    }]
+    # outputs.debug << "Touch: #{gtk.platform? :touch}"
+    # outputs.debug << "Tick: #{state.tick_count}"
+    # outputs.debug << gtk.framerate_diagnostics_primitives
   end
 end
 
 def tick args
-  # if args.state.tick_count == 1
-  #   args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg", looping: true }
-  # end
-  args.state.score ||= 0
-  args.state.player ||= Dragon.new args
-  args.state.blue_sky ||= BlueSky.new args.grid
-  args.state.fireballs ||= []
-  args.state.target_count ||= 3
-  # args.state.targets ||= args.state.target_count.map { |i| Target.new args.grid}
-  args.state.targets ||= []
-  args.state.cloud_count ||= 10
-  args.state.cloud_layers ||= 4
-  # args.state.clouds ||= []
-  args.state.clouds ||= args.state.cloud_layers.map { |j| args.state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
-  if args.state.tick_count == 0
-    args.state.clouds.reverse!
-    args.outputs.static_solids << args.state.blue_sky
-    args.outputs.static_sprites << args.state.player
+  if args.state.tick_count == 1
+    args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg", looping: true }
   end
-
-  # args.state.player.dead = true
-  # args.state.timer ||= 0
-  # game_over_tick args
-  # return
-  # args.outputs.solids << [args.state.blue_sky, args.state.clouds]
-  # args.state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
-  args.state.player.move
-  if fire_input? args.inputs
-    args.audio[:fireball] = {input: "sounds/creature1.ogg"}
-    args.state.fireballs << (Fireball.new args)
-  end
-  args.state.fireballs.each do |fireball|
-    fireball.move
-
-    args.state.targets.each do |target|
-      if args.geometry.intersect_rect? target, fireball
-        args.audio[:hit] = {input: "sounds/explosion#{(rand 4)+1}.ogg"}
-        target.dead = true
-        fireball.dead = true
-        args.state.score += 1
-      end
-    end
-  end
-  args.state.fireballs.reject! { |fireball| fireball.dead }
-  args.state.targets.reject! { |target| target.dead }
-
-  while args.state.targets.length < args.state.target_count do
-    t = nil
-    until t do
-      t = Target.new args.grid
-      args.state.targets.each do |existing|
-        conflict = args.geometry.intersect_rect? existing, t
-        if conflict
-          t = nil
-          break
-        end
-      end
-    end
-    args.state.targets << t
-  end
-  # args.outputs.static_sprites.reject! { |fireball| fireball.dead}
-  # player_sprite_index = 1.frame_index count: 9, hold_for: 30, repeat: true
-  # args.outputs.debug << "Fireballs: #{args.state.fireballs.length}"
-  # args.outputs.debug << "Frame index: #{player_sprite_index}"
-  # args.outputs.debug << "Clouds: #{args.state.clouds[0][0]}"
-  # puts "Fireballs: #{args.state.fireballs.length}"
-  args.outputs.sprites << [args.state.clouds, args.state.fireballs, args.state.targets ]
-  args.outputs.labels << {
-    x: 40,
-    y: args.grid.h - 40,
-    text: "Score: #{args.state.score}",
-    size_enum: 4,
-    font: "fonts/PressStart2P-Regular.ttf",
-  }
-  # args.outputs.debug << "Tick: #{args.state.tick_count}"
-  # args.outputs.debug << args.gtk.framerate_diagnostics_primitives
+  args.state.game ||= Game.new args
+  args.state.scene ||= "gameplay"
+  args.state.game.send "#{args.state.scene}_tick"
 end
