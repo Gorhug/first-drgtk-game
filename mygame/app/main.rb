@@ -189,7 +189,7 @@ class Cloud
   end
 end
 
-HIGH_SCORE_FILE = "high-score.txt"
+HIGH_SCORE_FILE = "saves/high-score.txt"
 FPS = 60
 class Game
   attr_gtk
@@ -429,11 +429,16 @@ def tick args
   state = args.state
   outputs = args.outputs
   grid = args.grid
+  inputs = args.inputs
+  gtk = args.gtk
   if args.state.tick_count == 1
     args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
     looping: true,
     # gain: 0.1
   }
+  end
+  if inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt
+    gtk.set_window_fullscreen !gtk.window_fullscreen?
   end
   state.player ||= Dragon.new args
   state.blue_sky ||= BlueSky.new grid
