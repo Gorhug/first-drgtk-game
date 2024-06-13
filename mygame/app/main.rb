@@ -1,6 +1,31 @@
+
 class Dragon
-  attr :x, :y, :w, :h, :speed, :dead
+  attr :x, :y, :w, :h, :speed, :dead, :angle
   attr_gtk
+
+  # waypoint code for mouse/touch control adapted from
+  # https://github.com/DragonRidersUnite/touch_playground/
+  # +angle+ is expected to be in degrees with 0 being facing right
+  def vel_from_angle(angle, speed)
+    [speed * Math.cos(deg_to_rad(angle)), speed * Math.sin(deg_to_rad(angle))]
+  end
+
+  # returns diametrically opposed angle
+  # uses degrees
+  def opposite_angle(angle)
+    add_to_angle(angle, 180)
+  end
+
+  # returns a new angle from the og `angle` one summed with the `diff`
+  # degrees! of course
+  def add_to_angle(angle, diff)
+    ((angle + diff) % 360).abs
+  end
+
+  def deg_to_rad(deg)
+    (deg * Math::PI / 180).round(4)
+  end
+
   def initialize args
     @args = args
     # @grid = grid
@@ -12,6 +37,7 @@ class Dragon
     @speed    = 12
     @path = ''
     @dead = false
+    @angle = 0
   end
 
   def move
@@ -39,12 +65,39 @@ class Dragon
     end
 
     total_movement = x_movement.abs + y_movement.abs
+    # outputs.debug << "Total movement: #{total_movement}"
     if total_movement > @speed
       x_movement = x_movement / (total_movement / @speed)
       y_movement = y_movement / (total_movement / @speed)
     end
-    @x += x_movement
-    @y += y_movement
+    if total_movement > 0
+      state.waypoint = nil
+      @x += x_movement
+      @y += y_movement
+    elsif inputs.mouse.click || inputs.touch.finger_left
+        state.waypoint = {
+          x: (inputs.mouse.click.x || inputs.touch.finger_left.x),
+          y: (inputs.mouse.click.y || inputs.touch.finger_left.y),
+          w: 12,
+          h: 12,
+          anchor_x: 0.5,
+          anchor_y: 0.5
+        }
+    end
+    # outputs.debug << "Waypoint: #{state.waypoint}"
+    wp = state.waypoint
+    if wp
+      p_center = {x: @x+@w -12, y: @y+10}
+      wp_center = {x: wp.x+wp.w/2, y: wp.y+wp.h/2}
+      @angle = opposite_angle geometry.angle_from p_center, wp_center
+      x_vel, y_vel = vel_from_angle @angle, @speed
+      @x += x_vel
+      @y += y_vel
+
+      if wp.inside_rect? self
+        state.waypoint = nil
+      end
+    end
     @x = @x.clamp 0, grid.w - @w
     @y = @y.clamp 0, grid.h - @h
   end
@@ -201,7 +254,9 @@ class Game
   def fire_input?
     inputs.keyboard.key_down.z ||
       inputs.keyboard.key_down.j ||
-      inputs.controller_one.key_down.a
+      inputs.controller_one.key_down.a ||
+      inputs.mouse.click ||
+      inputs.touch.finger_right
   end
 
 
@@ -372,11 +427,12 @@ class Game
     if state.title_ending
       if audio.key? :begin
         outputs.labels << {
-            x: 480,
+            x: grid.w / 2,
             y: grid.top - 280,
             text: "PREPARE!",
             size_enum: 6,
             font: "fonts/PressStart2P-Regular.ttf",
+            alignment_enum: 1
           }
       else
         audio[:music].paused = false
@@ -387,30 +443,57 @@ class Game
 
     labels = []
     labels << {
-      x: 400,
+      x: grid.w / 2,
       y: grid.top - 200,
       text: "Gorhug presents",
       font: "fonts/Jacquard12-Regular.ttf",
       size_enum: 28,
+      alignment_enum: 1,
     }
     labels << {
-      x: 380,
-      y: grid.top - 280,
+      x: grid.w / 2,
+      y: grid.top - 290,
       text: "Target Practice",
       size_enum: 6,
       font: "fonts/PressStart2P-Regular.ttf",
+      alignment_enum: 1,
     }
     labels << {
-      x: 460,
-      y: grid.top - 320,
+      x: grid.w / 2,
+      y: grid.top - 350,
       text: "Hit the targets!",
       font: "fonts/PressStart2P-Regular.ttf",
+      alignment_enum: 1,
     }
-
+    controls_text = ""
+    outputs.debug << "Last active: #{inputs.last_active}"
+    case inputs.last_active
+    when :keyboard
+      controls_text = "Arrows or WASD to move, Z or J to fire"
+    when :controller
+      controls_text = "D-pad or left analog to move, A-button to fire"
+    when :mouse
+      controls_text = "Click to fire and move to pointed spot"
+    end
+    if gtk.platform? :touch
+      labels << {
+        x: 40,
+        y: 160,
+        text: "Touch left side to move, right side to fire",
+        font: "fonts/PressStart2P-Regular.ttf",
+      }
+    else
+      labels << {
+        x: 40,
+        y: 160,
+        text: "Mouse, keyboard, gamepad supported",
+        font: "fonts/PressStart2P-Regular.ttf",
+      }
+    end
     labels << {
       x: 40,
       y: 120,
-      text: "Arrows/WASD to move | Z/J to fire | gamepad supported",
+      text: controls_text,
       font: "fonts/PressStart2P-Regular.ttf",
     }
     labels << {
@@ -431,11 +514,29 @@ def tick args
   grid = args.grid
   inputs = args.inputs
   gtk = args.gtk
+  audio = args.audio
+  # outputs.debug << "Touch left: #{inputs.finger_left}"
   if args.state.tick_count == 1
     args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
     looping: true,
     # gain: 0.1
   }
+  end
+  if (!inputs.keyboard.has_focus &&
+      # gtk.production? &&
+      state.tick_count != 0)
+    outputs.background_color = [0, 0, 0]
+    outputs.labels << { x: 640,
+                        y: 360,
+                        text: "Game Paused (click to resume).",
+                        alignment_enum: 1,
+                        r: 0, g: 0, b: 0,
+                        size_enum: 6,
+                        font: "fonts/PressStart2P-Regular.ttf", }
+    audio.volume = 0.0
+    return
+  else
+    audio.volume = 1.0
   end
   if inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt
     gtk.set_window_fullscreen !gtk.window_fullscreen?
@@ -449,6 +550,7 @@ def tick args
     state.clouds.reverse!
     outputs.static_solids << state.blue_sky
     outputs.static_sprites << [state.clouds, state.player]
+    gtk.set_cursor "sprites/misc/target_b.png", 16, 16
   end
   args.state.game ||= Game.new args
   args.state.scene ||= "title"
