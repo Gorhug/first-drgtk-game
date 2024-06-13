@@ -76,25 +76,27 @@ class Dragon
       @y += y_movement
     elsif inputs.mouse.click || inputs.touch.finger_left
         state.waypoint = {
-          x: (inputs.mouse.click.x || inputs.touch.finger_left.x),
+          x: (inputs.mouse.click.x || inputs.touch.finger_left.x) - @w + 10,
           y: (inputs.mouse.click.y || inputs.touch.finger_left.y),
-          w: 12,
-          h: 12,
+          w: 16,
+          h: 16,
           anchor_x: 0.5,
-          anchor_y: 0.5
+          anchor_y: 0.5,
+          primitive_marker: :border
         }
     end
     # outputs.debug << "Waypoint: #{state.waypoint}"
     wp = state.waypoint
     if wp
-      p_center = {x: @x+@w -12, y: @y+10}
-      wp_center = {x: wp.x+wp.w/2, y: wp.y+wp.h/2}
-      @angle = opposite_angle geometry.angle_from p_center, wp_center
+      # p_center = {x: @x+@w -32, y: @y, w: 48, h: 48}
+      # wp_center = {x: wp.x+wp.w/2, y: wp.y+wp.h/2}
+      @angle = opposite_angle geometry.angle_from self, wp
       x_vel, y_vel = vel_from_angle @angle, @speed
       @x += x_vel
       @y += y_vel
-
-      if wp.inside_rect? self
+      outputs.debug << [wp, {x: @x, y: @y, w: @w, h: @h, primitive_marker: :border}]
+      @angle = 0
+      if wp.intersect_rect? self
         state.waypoint = nil
       end
     end
@@ -121,11 +123,11 @@ class Fireball
   attr_gtk
   def initialize args
     @args = args
-    @x = state.player.x + state.player.w - 12
-    @y = state.player.y + 10
+    @y = state.player.y
     @w    = 48
     @h    = 48
     @speed    = state.player.speed + 2
+    @x = state.player.x + state.player.w - @w
     @path = 'sprites/misc/fireball.png'
     @dead = false
     @anim_start = state.tick_count - 1
@@ -249,6 +251,15 @@ class Game
 
   def initialize args
     @args = args
+    state.score = 0
+    # state.player ||= Dragon.new args
+    # state.blue_sky ||= BlueSky.new grid
+    state.fireballs = []
+    state.target_count = 3
+    state.targets = []
+    state.timer = 20 * FPS
+    state.saved_high_score = false
+    state.high_score = (gtk.read_file HIGH_SCORE_FILE).to_i
   end
 
   def fire_input?
@@ -259,17 +270,42 @@ class Game
       inputs.touch.finger_right
   end
 
+  def prepare_tick
+    state.player.move
+    if audio.key? :begin
+      outputs.labels << {
+          x: grid.w / 2,
+          y: grid.top - 280,
+          text: "PREPARE!",
+          size_enum: 6,
+          font: "fonts/PressStart2P-Regular.ttf",
+          alignment_enum: 1
+        }
+    else
+      audio[:music].paused = false
+      state.scene = "gameplay"
+    end
+  end
+
+  def prepare_for_prepare
+    state.reset_game = "prepare"
+    state.player.dead = false
+    audio[:music].paused = true
+    audio[:begin] = {input: "sounds/success.ogg"}
+  end
 
   def game_over_tick
-    state.high_score ||= (gtk.read_file HIGH_SCORE_FILE).to_i
 
-    state.timer -= 1
-    if !audio.key? :gameover
-      audio[:music].paused = false
-    end
+    # state.timer -= 1
+
     if !state.saved_high_score && state.score > state.high_score
       gtk.write_file HIGH_SCORE_FILE, state.score.to_s
       state.saved_high_score = true
+    end
+
+    if !audio.key? :gameover
+      audio[:music].paused = false
+      prepare_for_prepare if fire_input?
     end
 
     labels = []
@@ -314,32 +350,9 @@ class Game
       font: "fonts/PressStart2P-Regular.ttf"
     }
     outputs.labels << labels
-    # outputs.sprites << state.clouds
-    if state.timer < -30 && fire_input?
-      gtk.reset_next_tick
-    end
   end
 
   def gameplay_tick
-    state.score ||= 0
-    # state.player ||= Dragon.new args
-    state.blue_sky ||= BlueSky.new grid
-    state.fireballs ||= []
-    state.target_count ||= 3
-    # state.targets ||= state.target_count.map { |i| Target.new grid}
-    state.targets ||= []
-    state.cloud_count ||= 10
-    state.cloud_layers ||= 4
-    # state.clouds ||= []
-    # state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
-    if state.tick_count == 0
-      # state.clouds.reverse!
-      # outputs.static_solids << state.blue_sky
-      outputs.static_sprites << state.player
-    end
-
-
-    state.timer ||= 20 * FPS
     state.timer -= 1
     if state.timer <= 0
       audio[:music].paused = true
@@ -413,33 +426,11 @@ class Game
   end
 
   def title_tick
-    state.title_ending ||= false
-    if fire_input? && !state.title_ending
-      state.player.dead = false
-      audio[:music].paused = true
-      audio[:begin] = {input: "sounds/success.ogg"}
-      state.title_ending = true
-      # state.scene = "gameplay"
-      # return
-    end
+    # state.title_ending ||= false
+    prepare_for_prepare if fire_input? #&& !state.title_ending
+
     state.player.dead = false
     state.player.move
-    if state.title_ending
-      if audio.key? :begin
-        outputs.labels << {
-            x: grid.w / 2,
-            y: grid.top - 280,
-            text: "PREPARE!",
-            size_enum: 6,
-            font: "fonts/PressStart2P-Regular.ttf",
-            alignment_enum: 1
-          }
-      else
-        audio[:music].paused = false
-        state.scene = "gameplay"
-      end
-      return
-    end
 
     labels = []
     labels << {
@@ -466,7 +457,7 @@ class Game
       alignment_enum: 1,
     }
     controls_text = ""
-    outputs.debug << "Last active: #{inputs.last_active}"
+    # outputs.debug << "Last active: #{inputs.last_active}"
     case inputs.last_active
     when :keyboard
       controls_text = "Arrows or WASD to move, Z or J to fire"
@@ -482,6 +473,18 @@ class Game
         text: "Touch left side to move, right side to fire",
         font: "fonts/PressStart2P-Regular.ttf",
       }
+      fullscreen_button =  {
+        x: 0,
+        y: grid.top,
+        w: 48, h: 48,
+        # anchor_x: 0.5,
+        anchor_y: 1.0,
+        path: "sprites/misc/transparentDark28.png"
+      }
+      outputs.primitives << fullscreen_button
+      gtk.set_window_fullscreen !gtk.window_fullscreen? if inputs.touch.values.any? do |t|
+        t.inside_rect? fullscreen_button
+      end
     else
       labels << {
         x: 40,
@@ -554,5 +557,11 @@ def tick args
   end
   args.state.game ||= Game.new args
   args.state.scene ||= "title"
+  if state.reset_game
+    state.scene = state.reset_game
+    state.reset_game = nil
+    state.game = Game.new args
+    state.player.dead = false
+  end
   args.state.game.send "#{args.state.scene}_tick"
 end
