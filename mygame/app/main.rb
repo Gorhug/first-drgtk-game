@@ -1,3 +1,5 @@
+# Copyright Ilkka Forsblom
+
 
 class Dragon
   attr :x, :y, :w, :h, :speed, :dead, :angle
@@ -266,8 +268,9 @@ class Game
     inputs.keyboard.key_down.z ||
       inputs.keyboard.key_down.j ||
       inputs.controller_one.key_down.a ||
-      inputs.mouse.click ||
-      inputs.touch.finger_right
+      !state.fs_touched &&
+      (inputs.mouse.click ||
+      inputs.touch.finger_right)
   end
 
   def prepare_tick
@@ -473,18 +476,7 @@ class Game
         text: "Touch left side to move, right side to fire",
         font: "fonts/PressStart2P-Regular.ttf",
       }
-      fullscreen_button =  {
-        x: 0,
-        y: grid.top,
-        w: 48, h: 48,
-        # anchor_x: 0.5,
-        anchor_y: 1.0,
-        path: "sprites/misc/transparentDark28.png"
-      }
-      outputs.primitives << fullscreen_button
-      gtk.set_window_fullscreen !gtk.window_fullscreen? if inputs.touch.values.any? do |t|
-        t.inside_rect? fullscreen_button
-      end
+
     else
       labels << {
         x: 40,
@@ -518,6 +510,9 @@ def tick args
   inputs = args.inputs
   gtk = args.gtk
   audio = args.audio
+  layout = args.layout
+
+  state.scene ||= "title"
   # outputs.debug << "Touch left: #{inputs.finger_left}"
   if args.state.tick_count == 1
     args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
@@ -541,9 +536,33 @@ def tick args
   else
     audio.volume = 1.0
   end
-  if inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt
-    gtk.set_window_fullscreen !gtk.window_fullscreen?
+  state.fsb_rect ||= layout.rect row: 0, col: 12, w: 2, h: 2
+  state.fullscreen_button ||= state.fsb_rect.center.merge(
+    # x: grid.w / 2,
+    # y: grid.top,
+    w: 96, h: 96,
+    anchor_x: 0.5,
+    anchor_y: 0.5,
+    path: "sprites/misc/transparentDark28.png"
+  )
+  state.last_fs_touch ||= -30
+  state.fs_touched = false
+  # outputs.debug << "Touch: #{inputs.touch}"
+  touches = inputs.touch.values
+  touches << inputs.mouse.click if inputs.mouse.click
+  if ["title", "game_over"].include? state.scene
+    if (touches.any? {|t| t.inside_rect? state.fullscreen_button}) &&
+      (state.tick_count > state.last_fs_touch + FPS)
+      state.last_fs_touch = state.tick_count
+      state.fs_touched = true
+    end
+    outputs.primitives << state.fullscreen_button
   end
+  if (inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt) || state.fs_touched
+    gtk.set_window_fullscreen !gtk.window_fullscreen? #if gtk.production?
+    # gtk.notify! "Fullscreen toggled at tick: #{state.tick_count}"
+  end
+
   state.player ||= Dragon.new args
   state.blue_sky ||= BlueSky.new grid
   state.cloud_count ||= 10
@@ -554,14 +573,15 @@ def tick args
     outputs.static_solids << state.blue_sky
     outputs.static_sprites << [state.clouds, state.player]
     gtk.set_cursor "sprites/misc/target_b.png", 16, 16
+    # outputs.static_primitives << state.fullscreen_button # if gtk.platform? :touch
   end
   args.state.game ||= Game.new args
-  args.state.scene ||= "title"
   if state.reset_game
     state.scene = state.reset_game
     state.reset_game = nil
     state.game = Game.new args
     state.player.dead = false
   end
+  # args.outputs.primitives << args.layout.debug_primitives
   args.state.game.send "#{args.state.scene}_tick"
 end
