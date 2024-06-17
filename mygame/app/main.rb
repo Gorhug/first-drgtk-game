@@ -86,6 +86,9 @@ class Dragon
           anchor_y: 0.5,
           primitive_marker: :border
         }
+        wp = state.waypoint
+        wp.x = wp.x.clamp 0, grid.w
+        wp.y = wp.y.clamp 0, grid.h
     end
     # outputs.debug << "Waypoint: #{state.waypoint}"
     wp = state.waypoint
