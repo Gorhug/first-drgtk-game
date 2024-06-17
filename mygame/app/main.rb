@@ -161,8 +161,15 @@ class Fireball
 end
 
 class Target
-  attr_accessor :x, :y, :w, :h, :speed, :dead
-  def initialize grid
+  attr :x, :y, :w, :h, :speed, :dead, :angle, :dx, :dy
+  attr_gtk
+
+  def sleep_time
+    3 * FPS * (state.timer / (20*FPS)) + 30
+  end
+
+  def initialize args
+    @args = args
     size = 64
     # @grid = grid
     @x = rand(grid.w * 0.4) + grid.w * 0.6 - size
@@ -172,6 +179,11 @@ class Target
     # @speed    = speed
     @path = 'sprites/misc/target_red3.png'
     @dead = false
+    @angle = 0
+    @sleep = sleep_time
+    @dx = 0
+    @dy = 0
+    @speed = 25
   end
 
   # if the object that is in args.outputs.sprites (or static_sprites)
@@ -180,12 +192,28 @@ class Target
   def draw_override ffi_draw
     # first move then draw
 
-    # move
+    move
     # return
     # The argument order for ffi.draw_sprite is:
     # x, y, w, h, path
     ffi_draw.draw_sprite @x, @y, @w, @h, @path
   end
+end
+
+def move
+  @sleep -= 1
+  @dx *= 0.9
+  @dy *= 0.9
+  if @sleep <= 0
+    @angle = rand 360
+    @sleep = sleep_time
+    @dx = @angle.vector_x @speed
+    @dy = @angle.vector_y @speed
+  end
+  @x += @dx
+  @y += @dy
+  @x = @x.clamp 0, grid.w - @w
+  @y = @y.clamp 0, grid.h - @h
 end
 
 class Solid
@@ -394,7 +422,7 @@ class Game
     while state.targets.length < state.target_count do
       t = nil
       until t do
-        t = Target.new grid
+        t = Target.new args
         state.targets.each do |existing|
           conflict = geometry.intersect_rect? existing, t
           if conflict
@@ -546,7 +574,7 @@ def tick args
     w: 96, h: 96,
     anchor_x: 0.5,
     anchor_y: 0.5,
-    path: "sprites/misc/transparentdark28.png"
+    path: "sprites/misc/transparent_dark28.png"
   )
   state.last_fs_touch ||= -30
   state.fs_touched = false
