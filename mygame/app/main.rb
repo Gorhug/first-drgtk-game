@@ -520,7 +520,7 @@ def tick args
     # gain: 0.1
   }
   end
-  if (!inputs.keyboard.has_focus &&
+  if (!gtk.platform? :touch) && (!inputs.keyboard.has_focus &&
       # gtk.production? &&
       state.tick_count != 0)
     outputs.background_color = [0, 0, 0]
@@ -543,7 +543,7 @@ def tick args
     w: 96, h: 96,
     anchor_x: 0.5,
     anchor_y: 0.5,
-    path: "sprites/misc/transparentDark28.png"
+    path: "sprites/misc/transparentdark28.png"
   )
   state.last_fs_touch ||= -30
   state.fs_touched = false
@@ -559,7 +559,7 @@ def tick args
     outputs.primitives << state.fullscreen_button
   end
   if (inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt) || state.fs_touched
-    gtk.set_window_fullscreen !gtk.window_fullscreen? #if gtk.production?
+    gtk.set_window_fullscreen !gtk.window_fullscreen? # if gtk.production?
     # gtk.notify! "Fullscreen toggled at tick: #{state.tick_count}"
   end
 
@@ -573,6 +573,7 @@ def tick args
     outputs.static_solids << state.blue_sky
     outputs.static_sprites << [state.clouds, state.player]
     gtk.set_cursor "sprites/misc/target_b.png", 16, 16
+    # gtk.set_window_fullscreen true if gtk.platform? :touch
     # outputs.static_primitives << state.fullscreen_button # if gtk.platform? :touch
   end
   args.state.game ||= Game.new args
