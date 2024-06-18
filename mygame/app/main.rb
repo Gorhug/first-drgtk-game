@@ -186,6 +186,22 @@ class Target
     @speed = 25
   end
 
+  def move
+    @sleep -= 1
+    @dx *= 0.9
+    @dy *= 0.9
+    if @sleep <= 0
+      @angle = rand 360
+      @sleep = sleep_time
+      @dx = @angle.vector_x @speed
+      @dy = @angle.vector_y @speed
+    end
+    @x += @dx
+    @y += @dy
+    @x = @x.clamp 0, grid.w - @w
+    @y = @y.clamp 0, grid.h - @h
+  end
+
   # if the object that is in args.outputs.sprites (or static_sprites)
   # respond_to? :draw_override, then the method is invoked giving you
   # access to the class used to draw to the canvas.
@@ -198,22 +214,6 @@ class Target
     # x, y, w, h, path
     ffi_draw.draw_sprite @x, @y, @w, @h, @path
   end
-end
-
-def move
-  @sleep -= 1
-  @dx *= 0.9
-  @dy *= 0.9
-  if @sleep <= 0
-    @angle = rand 360
-    @sleep = sleep_time
-    @dx = @angle.vector_x @speed
-    @dy = @angle.vector_y @speed
-  end
-  @x += @dx
-  @y += @dy
-  @x = @x.clamp 0, grid.w - @w
-  @y = @y.clamp 0, grid.h - @h
 end
 
 class Solid
@@ -277,6 +277,56 @@ class Cloud
   end
 end
 
+class Horizon
+  attr_sprite
+  attr_gtk
+
+  def initialize args
+    @args = args
+    @w = 1024
+    @h = 1024
+    @x = 0 # grid.left
+    @y = grid.top
+    # @anchor_x = 0.0
+    @anchor_y = 1.0
+    @path = "sprites/uncolored_peaks.png"
+    # @anim_start = - @x
+    @r = 0
+    @g = 128
+  end
+
+  def draw_override ffi_draw
+    # first move then draw
+
+    # move
+    # return
+    2.times do |i|
+      ffi_draw.draw_sprite_5 @x + i*@w, @y, @w, @h,
+      @path,
+      nil, #@angle,
+      nil, @r, @g, nil, #@alpha, @r, @g, @blue_saturation,
+      nil, nil, nil, nil, #@tile_x, @tile_y, @tile_w, @tile_h,
+      nil, nil, #@flip_horizontally, @flip_vertically,
+      nil, nil, #@angle_anchor_x, @angle_anchor_y,
+      nil, nil, nil, nil, #@source_x, @source_y, @source_w, @source_h,
+      nil, #@blendmode_enum,
+      @anchor_x, @anchor_y
+    end
+      # The argument order for ffi_draw.draw_sprite_5 is:
+    # x, y, w, h,
+    # path,
+    # angle,
+    # alpha, red_saturation, green_saturation, blue_saturation
+    # tile_x, tile_y, tile_w, tile_h,
+    # flip_horizontally, flip_vertically,
+    # angle_anchor_x, angle_anchor_y,
+    # source_x, source_y, source_w, source_h,
+    # blendmode_enum
+    # anchor_x
+    # anchor_y
+  end
+end
+
 HIGH_SCORE_FILE = "saves/high-score.txt"
 FPS = 60
 class Game
@@ -293,6 +343,7 @@ class Game
     state.timer = 20 * FPS
     state.saved_high_score = false
     state.high_score = (gtk.read_file HIGH_SCORE_FILE).to_i
+    state.fg_clouds = nil
   end
 
   def fire_input?
@@ -306,15 +357,15 @@ class Game
 
   def prepare_tick
     state.player.move
+    state.label.prepare ||= state.default_font.merge({
+      x: grid.w / 2,
+      y: grid.top - 280,
+      text: "PREPARE!",
+      size_enum: 6,
+      alignment_enum: 1
+    })
     if audio.key? :begin
-      outputs.labels << {
-          x: grid.w / 2,
-          y: grid.top - 280,
-          text: "PREPARE!",
-          size_enum: 6,
-          font: "fonts/PressStart2P-Regular.ttf",
-          alignment_enum: 1
-        }
+      outputs.labels << state.label.prepare
     else
       audio[:music].paused = false
       state.scene = "gameplay"
@@ -336,26 +387,30 @@ class Game
       gtk.write_file HIGH_SCORE_FILE, state.score.to_s
       state.saved_high_score = true
     end
-
+    labels = []
     if !audio.key? :gameover
       audio[:music].paused = false
       prepare_for_prepare if fire_input?
+      labels << {
+        x: 40,
+        y: 90,
+        text: "Fire to restart",
+        size_enum: 2,
+    }
     end
 
-    labels = []
+
     labels << {
       x: 40,
       y: grid.h - 40,
       text: "Game Over!",
       size_enum: 10,
-      font: "fonts/PressStart2P-Regular.ttf"
     }
     labels << {
       x: 40,
       y: grid.h - 90,
       text: "Score: #{state.score}",
       size_enum: 7,
-      font: "fonts/PressStart2P-Regular.ttf"
     }
 
     if state.score > state.high_score
@@ -364,7 +419,6 @@ class Game
         y: grid.h - 140,
         text: "New high-score!",
         size_enum: 4,
-        font: "fonts/PressStart2P-Regular.ttf"
       }
     else
       labels << {
@@ -372,18 +426,13 @@ class Game
         y: args.grid.h - 140,
         text: "Score to beat: #{args.state.high_score}",
         size_enum: 3,
-        font: "fonts/PressStart2P-Regular.ttf"
       }
     end
+    outputs.labels << labels.map {|l| state.default_font.merge l}
+  end
 
-    labels << {
-      x: 40,
-      y: 90,
-      text: "Fire to restart",
-      size_enum: 2,
-      font: "fonts/PressStart2P-Regular.ttf"
-    }
-    outputs.labels << labels
+  def audio_pan pos, full
+    pos.to_f * 2.0 / full.to_f - 1.0
   end
 
   def gameplay_tick
@@ -396,20 +445,36 @@ class Game
       state.player.dead = true
       return
     end
+    state.fg_clouds ||= state.cloud_count.map do |i|
+      cloud = Cloud.new args, 1.5, 1.5
+      cloud.x += 2*grid.w
+      cloud
+    end
     # outputs.solids << [state.blue_sky, state.clouds]
     # state.clouds.each { |layer| layer.each {|cloud| cloud.move }}
     state.player.move
     if state.game.fire_input?
-      audio[:fireball] = {input: "sounds/creature1.ogg"}
+      audio[:fireball] = {
+        input: "sounds/creature1.ogg",
+        x: (audio_pan state.player.x, grid.w),
+        y: (audio_pan state.player.y, grid.h),
+      }
       state.fireballs << (Fireball.new args)
       # audio[:gameover] = {input: "sounds/Failure.wav"}
+    end
+    if audio.key? :fireball
+      outputs.debug << "Fireball sound x: #{audio.fireball.x}, y: #{audio.fireball.y}"
     end
     state.fireballs.each do |fireball|
       fireball.move
 
       state.targets.each do |target|
         if geometry.intersect_rect? target, fireball
-          audio[:hit] = {input: "sounds/explosion#{(rand 4)+1}.ogg"}
+          audio[:hit] = {
+            input: "sounds/explosion#{(rand 4)+1}.ogg",
+            x: (audio_pan target.x, grid.w),
+            y: (audio_pan target.y, grid.h),
+          }
           target.dead = true
           fireball.dead = true
           state.score += 1
@@ -439,21 +504,19 @@ class Game
     # outputs.debug << "Frame index: #{player_sprite_index}"
     # outputs.debug << "Clouds: #{state.clouds[0][0]}"
     # puts "Fireballs: #{state.fireballs.length}"
-    outputs.primitives << [state.fireballs, state.targets ]
+    outputs.primitives << [state.fireballs, state.targets, state.fg_clouds ]
     outputs.labels << [{
       x: 40,
       y: grid.h - 40,
       text: "Score: #{state.score}",
       size_enum: 4,
-      font: "fonts/PressStart2P-Regular.ttf",
     },{
       x: args.grid.w - 40,
       y: args.grid.h - 40,
       text: "Time Left: #{(state.timer / FPS).round}",
       size_enum: 2,
       alignment_enum: 2,
-      font: "fonts/PressStart2P-Regular.ttf",
-    }]
+    }].map {|t| state.default_font.merge t}
     # outputs.debug << "Touch: #{gtk.platform? :touch}"
     # outputs.debug << "Tick: #{state.tick_count}"
     # outputs.debug << gtk.framerate_diagnostics_primitives
@@ -469,25 +532,15 @@ class Game
     labels = []
     labels << {
       x: grid.w / 2,
-      y: grid.top - 200,
-      text: "Gorhug presents",
-      font: "fonts/Jacquard12-Regular.ttf",
-      size_enum: 28,
-      alignment_enum: 1,
-    }
-    labels << {
-      x: grid.w / 2,
       y: grid.top - 290,
       text: "Target Practice",
       size_enum: 6,
-      font: "fonts/PressStart2P-Regular.ttf",
       alignment_enum: 1,
     }
     labels << {
       x: grid.w / 2,
       y: grid.top - 350,
       text: "Hit the targets!",
-      font: "fonts/PressStart2P-Regular.ttf",
       alignment_enum: 1,
     }
     controls_text = ""
@@ -505,29 +558,33 @@ class Game
         x: 40,
         y: 160,
         text: "Touch left side to move, right side to fire",
-        font: "fonts/PressStart2P-Regular.ttf",
       }
-
     else
       labels << {
         x: 40,
         y: 160,
         text: "Mouse, keyboard, gamepad supported",
-        font: "fonts/PressStart2P-Regular.ttf",
       }
     end
     labels << {
       x: 40,
       y: 120,
       text: controls_text,
-      font: "fonts/PressStart2P-Regular.ttf",
     }
     labels << {
       x: 40,
       y: 80,
       text: "Fire to start",
       size_enum: 2,
-      font: "fonts/PressStart2P-Regular.ttf",
+    }
+    labels.map! {|l| state.default_font.merge l}
+    labels <<  {
+      x: grid.w / 2,
+      y: grid.top - 200,
+      text: "Gorhug presents",
+      font: "fonts/jacquard12.ttf",
+      size_enum: 28,
+      alignment_enum: 1,
     }
     outputs.labels << labels
   end
@@ -544,6 +601,10 @@ def tick args
   layout = args.layout
 
   state.scene ||= "title"
+  state.default_font = {
+    font: "fonts/press_start_2p.ttf",
+    # size_enum: 4,
+  }
   # outputs.debug << "Touch left: #{inputs.finger_left}"
   if args.state.tick_count == 1
     args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
@@ -555,13 +616,13 @@ def tick args
       # gtk.production? &&
       state.tick_count != 0)
     outputs.background_color = [0, 0, 0]
-    outputs.labels << { x: 640,
+    outputs.labels << state.default_font.merge({ x: 640,
                         y: 360,
                         text: "Game Paused (click to resume).",
                         alignment_enum: 1,
                         r: 0, g: 0, b: 0,
                         size_enum: 6,
-                        font: "fonts/PressStart2P-Regular.ttf", }
+                      })
     audio.volume = 0.0
     return
   else
@@ -598,11 +659,12 @@ def tick args
   state.blue_sky ||= BlueSky.new grid
   state.cloud_count ||= 10
   state.cloud_layers ||= 4
+  state.horizon = Horizon.new args
   state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
   if state.tick_count == 0
     state.clouds.reverse!
     outputs.static_solids << state.blue_sky
-    outputs.static_sprites << [state.clouds, state.player]
+    outputs.static_sprites << [state.horizon, state.clouds, state.player]
     gtk.set_cursor "sprites/misc/target_b.png", 16, 16
     # gtk.set_window_fullscreen true if gtk.platform? :touch
     # outputs.static_primitives << state.fullscreen_button # if gtk.platform? :touch

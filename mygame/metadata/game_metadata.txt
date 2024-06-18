@@ -3,7 +3,7 @@ devid=Gorhug
 devtitle=Ilkka Forsblom
 gameid=target-practice
 gametitle=Gorhug presents - Target Practice -
-version=0.5
+version=0.7
 icon=metadata/cat_icon.png
 
 # === Flags available at all licensing tiers ===
