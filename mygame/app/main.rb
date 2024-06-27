@@ -1,5 +1,8 @@
 # Copyright Ilkka Forsblom
 
+def audio_pan pos, full
+  pos.to_f * 2.0 / full.to_f - 1.0
+end
 
 class Dragon
   attr :x, :y, :w, :h, :speed, :dead, :angle
@@ -135,7 +138,7 @@ class Fireball
     @x = state.player.x + state.player.w - @w
     @path = 'sprites/misc/fireball.png'
     @dead = false
-    @anim_start = state.tick_count - 1
+    @anim_start = Kernel.tick_count - 1
   end
 
   def move
@@ -195,6 +198,13 @@ class Target
       @sleep = sleep_time
       @dx = @angle.vector_x @speed
       @dy = @angle.vector_y @speed
+      audio[:whoosh] = {
+              input: 'sounds/jump1.ogg',
+              gain: 0.6,
+              pitch: rand + 0.5,
+              x: (audio_pan @x, grid.w),
+              y: (audio_pan @y, grid.h),
+            }
     end
     @x += @dx
     @y += @dy
@@ -423,16 +433,12 @@ class Game
     else
       labels << {
         x: 40,
-        y: args.grid.h - 140,
-        text: "Score to beat: #{args.state.high_score}",
+        y: grid.h - 140,
+        text: "Score to beat: #{state.high_score}",
         size_enum: 3,
       }
     end
     outputs.labels << labels.map {|l| state.default_font.merge l}
-  end
-
-  def audio_pan pos, full
-    pos.to_f * 2.0 / full.to_f - 1.0
   end
 
   def gameplay_tick
@@ -511,8 +517,8 @@ class Game
       text: "Score: #{state.score}",
       size_enum: 4,
     },{
-      x: args.grid.w - 40,
-      y: args.grid.h - 40,
+      x: grid.w - 40,
+      y: grid.h - 40,
       text: "Time Left: #{(state.timer / FPS).round}",
       size_enum: 2,
       alignment_enum: 2,
@@ -591,91 +597,97 @@ class Game
 
 end
 
-def tick args
-  state = args.state
-  outputs = args.outputs
-  grid = args.grid
-  inputs = args.inputs
-  gtk = args.gtk
-  audio = args.audio
-  layout = args.layout
+class Main
+  attr_gtk
 
-  state.scene ||= "title"
-  state.default_font = {
-    font: "fonts/press_start_2p.ttf",
-    # size_enum: 4,
-  }
-  # outputs.debug << "Touch left: #{inputs.finger_left}"
-  if args.state.tick_count == 1
-    args.audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
-    looping: true,
-    # gain: 0.1
-  }
+  def initialize args
+    @args = args
   end
-  if (!gtk.platform? :touch) && (!inputs.keyboard.has_focus &&
-      # gtk.production? &&
-      state.tick_count != 0)
-    outputs.background_color = [0, 0, 0]
-    outputs.labels << state.default_font.merge({ x: 640,
-                        y: 360,
-                        text: "Game Paused (click to resume).",
-                        alignment_enum: 1,
-                        r: 0, g: 0, b: 0,
-                        size_enum: 6,
-                      })
-    audio.volume = 0.0
-    return
-  else
-    audio.volume = 1.0
-  end
-  state.fsb_rect ||= layout.rect row: 0, col: 12, w: 2, h: 2
-  state.fullscreen_button ||= state.fsb_rect.center.merge(
-    # x: grid.w / 2,
-    # y: grid.top,
-    w: 96, h: 96,
-    anchor_x: 0.5,
-    anchor_y: 0.5,
-    path: "sprites/misc/transparent_dark28.png"
-  )
-  state.last_fs_touch ||= -30
-  state.fs_touched = false
-  # outputs.debug << "Touch: #{inputs.touch}"
-  touches = inputs.touch.values
-  touches << inputs.mouse.click if inputs.mouse.click
-  if ["title", "game_over"].include? state.scene
-    if (touches.any? {|t| t.inside_rect? state.fullscreen_button}) &&
-      (state.tick_count > state.last_fs_touch + FPS)
-      state.last_fs_touch = state.tick_count
-      state.fs_touched = true
+
+  def tick
+    state.scene ||= "title"
+    state.default_font ||= {
+      font: "fonts/press_start_2p.ttf",
+      # size_enum: 4,
+    }
+    # outputs.debug << "Touch left: #{inputs.finger_left}"
+    if Kernel.tick_count == 1
+      audio[:music] = { input: "sounds/a-worthy-challenge.ogg",
+      looping: true,
+      # gain: 0.1
+    }
     end
-    outputs.primitives << state.fullscreen_button
-  end
-  if (inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt) || state.fs_touched
-    gtk.set_window_fullscreen !gtk.window_fullscreen? # if gtk.production?
-    # gtk.notify! "Fullscreen toggled at tick: #{state.tick_count}"
+    if (!gtk.platform? :touch) && (!inputs.keyboard.has_focus &&
+        # gtk.production? &&
+        Kernel.tick_count != 0)
+      outputs.background_color = [0, 0, 0]
+      outputs.labels << state.default_font.merge({ x: 640,
+                          y: 360,
+                          text: "Game Paused (click to resume).",
+                          alignment_enum: 1,
+                          r: 0, g: 0, b: 0,
+                          size_enum: 6,
+                        })
+      audio.volume = 0.0
+      return
+    else
+      audio.volume = 1.0
+    end
+    state.fsb_rect ||= layout.rect row: 0, col: 12, w: 2, h: 2
+    state.fullscreen_button ||= state.fsb_rect.center.merge(
+      # x: grid.w / 2,
+      # y: grid.top,
+      w: 96, h: 96,
+      anchor_x: 0.5,
+      anchor_y: 0.5,
+      path: "sprites/misc/transparent_dark28.png"
+    )
+    state.last_fs_touch ||= -30
+    state.fs_touched = false
+    # outputs.debug << "Touch: #{inputs.touch}"
+    touches = inputs.touch.values
+    touches << inputs.mouse.click if inputs.mouse.click
+    if ["title", "game_over"].include? state.scene
+      if (touches.any? {|t| t.inside_rect? state.fullscreen_button}) &&
+        (state.last_fs_touch.elapsed_time > FPS)
+        state.last_fs_touch = Kernel.tick_count
+        state.fs_touched = true
+      end
+      outputs.primitives << state.fullscreen_button
+    end
+    if (inputs.keyboard.key_down.enter && inputs.keyboard.key_held.alt) || state.fs_touched
+      gtk.set_window_fullscreen !gtk.window_fullscreen? # if gtk.production?
+      # gtk.notify! "Fullscreen toggled at tick: #{state.tick_count}"
+    end
+
+    state.player ||= Dragon.new args
+    state.blue_sky ||= BlueSky.new grid
+    state.cloud_count ||= 10
+    state.cloud_layers ||= 4
+    state.horizon = Horizon.new args
+    state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
+    if Kernel.tick_count == 0
+      state.clouds.reverse!
+      outputs.static_solids << state.blue_sky
+      outputs.static_sprites << [state.horizon, state.clouds, state.player]
+      gtk.set_cursor "sprites/misc/target_b.png", 16, 16
+      # gtk.set_window_fullscreen true if gtk.platform? :touch
+      # outputs.static_primitives << state.fullscreen_button # if gtk.platform? :touch
+    end
+    state.game ||= Game.new args
+    if state.reset_game
+      state.scene = state.reset_game
+      state.reset_game = nil
+      state.game = Game.new args
+      state.player.dead = false
+    end
+    # args.outputs.primitives << args.layout.debug_primitives
+    state.game.send "#{state.scene}_tick"
   end
 
-  state.player ||= Dragon.new args
-  state.blue_sky ||= BlueSky.new grid
-  state.cloud_count ||= 10
-  state.cloud_layers ||= 4
-  state.horizon = Horizon.new args
-  state.clouds ||= state.cloud_layers.map { |j| state.cloud_count.map { |i| Cloud.new args, 1/(j+1), 1/(j+1)} }
-  if state.tick_count == 0
-    state.clouds.reverse!
-    outputs.static_solids << state.blue_sky
-    outputs.static_sprites << [state.horizon, state.clouds, state.player]
-    gtk.set_cursor "sprites/misc/target_b.png", 16, 16
-    # gtk.set_window_fullscreen true if gtk.platform? :touch
-    # outputs.static_primitives << state.fullscreen_button # if gtk.platform? :touch
-  end
-  args.state.game ||= Game.new args
-  if state.reset_game
-    state.scene = state.reset_game
-    state.reset_game = nil
-    state.game = Game.new args
-    state.player.dead = false
-  end
-  # args.outputs.primitives << args.layout.debug_primitives
-  args.state.game.send "#{args.state.scene}_tick"
+end
+
+def tick args
+  args.state.m = Main.new args
+  args.state.m.tick
 end
