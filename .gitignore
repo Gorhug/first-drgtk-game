@@ -1,0 +1,4 @@
+*
+!mygame/**/*
+!.gitignore
+!README.md

@@ -208,8 +208,23 @@ class Target
     end
     @x += @dx
     @y += @dy
-    @x = @x.clamp 0, grid.w - @w
-    @y = @y.clamp 0, grid.h - @h
+    clamped = @x.clamp 0, grid.w - @w
+    if clamped != @x
+      @dx *= -1
+      @x = clamped
+      # audio[:whoosh] = {
+      #         input: 'sounds/jump1.ogg',
+      #         gain: 0.6,
+      #         pitch: rand + 0.5,
+      #         x: (audio_pan @x, grid.w),
+      #         y: (audio_pan @y, grid.h),
+      #       }
+    end
+    clamped = @y.clamp 0, grid.h - @h
+    if clamped != @y
+      @dy *= -1
+      @y = clamped
+    end
   end
 
   # if the object that is in args.outputs.sprites (or static_sprites)
